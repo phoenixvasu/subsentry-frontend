@@ -13,8 +13,23 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    
+    // Frontend validation
+    if (!username.trim()) {
+      setError('Username is required');
+      return;
+    }
+    
+    if (!password) {
+      setError('Password is required');
+      return;
+    }
+    
     try {
-      const response = await api.post("/auth/login", { username, password });
+      const response = await api.post("/auth/login", { 
+        username: username.trim(), 
+        password 
+      });
       login(response.data.user, response.data.token);
       // Use navigate instead of window.location.href for SPA routing
       setTimeout(() => {

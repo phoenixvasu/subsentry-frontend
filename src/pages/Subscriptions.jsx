@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import api from "../lib/api";
 import Card from "../components/Card";
-import Modal from "../components/Modal";
+// import Modal from "../components/Modal";
 import Input from "../components/Input";
 import Select from "../components/Select";
 import Table from "../components/Table";
@@ -55,7 +55,8 @@ const Subscriptions = () => {
       const subscriptionsData = response.data.data || [];
       console.log("Subscriptions data:", subscriptionsData);
       setSubscriptions(subscriptionsData);
-      setTotalPages(1); // No pagination support yet
+      // Calculate total pages based on limit
+      setTotalPages(Math.ceil(subscriptionsData.length / limit));
     } catch (err) {
       console.error("Error fetching subscriptions:", err);
       setError("Failed to fetch subscriptions.");
@@ -63,7 +64,7 @@ const Subscriptions = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []); // Remove dependencies since we're not using filters yet
+  }, [limit]); // Add limit as dependency
 
   const fetchCategories = async () => {
     try {
@@ -76,6 +77,20 @@ const Subscriptions = () => {
     }
   };
 
+  // Get current page's subscriptions
+  const getCurrentPageSubscriptions = () => {
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    return subscriptions.slice(startIndex, endIndex);
+  };
+
+  // Handle page change
+  const handlePageChange = (newPage) => {
+    setPage(newPage);
+    // Scroll to top when page changes
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   useEffect(() => {
     fetchCategories();
   }, []);
@@ -83,6 +98,11 @@ const Subscriptions = () => {
   useEffect(() => {
     fetchSubscriptions();
   }, [fetchSubscriptions]);
+
+  // Reset to page 1 when search or filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchQuery, filterCategory, filterBillingCycle]);
 
   useEffect(() => {
     const cost = parseFloat(formData.cost);
@@ -163,8 +183,35 @@ const Subscriptions = () => {
     e.preventDefault();
     setError("");
     setSuccess("");
+    
+    // Frontend validation
+    if (!formData.service_name.trim()) {
+      setError("Service name is required");
+      return;
+    }
+    
+    if (!formData.cost || parseFloat(formData.cost) <= 0) {
+      setError("Cost must be greater than 0");
+      return;
+    }
+    
+    if (!formData.category) {
+      setError("Category is required");
+      return;
+    }
+    
+    if (!formData.start_date) {
+      setError("Start date is required");
+      return;
+    }
+    
     try {
-      const payload = { ...formData, cost: parseFloat(formData.cost) };
+      const payload = { 
+        ...formData, 
+        cost: parseFloat(formData.cost),
+        service_name: formData.service_name.trim()
+      };
+      
       if (currentSubscription) {
         await api.put(`/subscriptions/${currentSubscription.id}`, payload);
         setSuccess("Subscription updated successfully!");
@@ -179,185 +226,404 @@ const Subscriptions = () => {
     }
   };
 
-  const columns = [
-    { header: "Service Name", accessor: "service_name" },
-    { header: "Cost", accessor: "cost" },
-    { header: "Billing Cycle", accessor: "billing_cycle" },
-    { header: "Category", render: (row) => row.category?.name },
-    {
-      header: "Auto Renews",
-      render: (row) => (row.auto_renews ? "Yes" : "No"),
-    },
-    { header: "Start Date", accessor: "start_date" },
-    { header: "Annualized Cost", accessor: "annualized_cost" },
-    {
-      header: "Actions",
-      render: (row) => (
-        <div className="flex space-x-2">
-          <button
-            onClick={() => handleEditSubscription(row)}
-            className="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded text-xs"
-          >
-            Edit
-          </button>
-          <button
-            onClick={() => handleDeleteSubscription(row._id)}
-            className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-xs"
-          >
-            Delete
-          </button>
-        </div>
-      ),
-    },
-  ];
+    const columns = [
+      { 
+        header: "Service Name", 
+        accessor: "service_name",
+        render: (row) => (
+          <div className="font-semibold text-gray-800">
+            {row.service_name}
+          </div>
+        )
+      },
+      { 
+        header: "Cost", 
+        render: (row) => (
+          <div className="text-right">
+            <div className="font-bold text-green-600">₹{parseFloat(row.cost).toFixed(2)}</div>
+            <div className="text-xs text-gray-500">{row.billing_cycle}</div>
+          </div>
+        )
+      },
+      { 
+        header: "Category", 
+        render: (row) => (
+          <span className="px-3 py-1 bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 rounded-full text-xs font-medium border border-blue-300">
+            {row.category_name || "Uncategorized"}
+          </span>
+        )
+      },
+      {
+        header: "Auto Renews",
+        render: (row) => (
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+            row.auto_renews 
+              ? "bg-green-100 text-green-800 border border-green-300" 
+              : "bg-red-100 text-red-800 border border-red-300"
+          }`}>
+            {row.auto_renews ? "🔄 Yes" : "⏹️ No"}
+          </span>
+        ),
+      },
+      { 
+        header: "Start Date", 
+        render: (row) => (
+          <div className="text-gray-700">
+            {new Date(row.start_date).toLocaleDateString('en-IN', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            })}
+          </div>
+        )
+      },
+      { 
+        header: "Annual Cost", 
+        render: (row) => (
+          <div className="text-right">
+            <div className="font-bold text-purple-600">₹{parseFloat(row.annualized_cost).toFixed(2)}</div>
+            <div className="text-xs text-gray-500">/year</div>
+          </div>
+        )
+      },
+      {
+        header: "Actions",
+        render: (row) => (
+          <div className="flex space-x-2">
+            <button
+              onClick={() => handleEditSubscription(row)}
+              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-white font-medium py-2 px-3 rounded-lg text-xs shadow-sm hover:shadow-md transition-all duration-200"
+            >
+              ✏️ Edit
+            </button>
+            <button
+              onClick={() => handleDeleteSubscription(row.id)}
+              className="bg-gradient-to-r from-red-400 to-red-500 hover:from-red-500 hover:to-red-600 text-white font-medium py-2 px-3 rounded-lg text-xs shadow-sm hover:shadow-md transition-all duration-200"
+            >
+              🗑️ Delete
+            </button>
+          </div>
+        ),
+      },
+    ];
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Subscriptions</h1>
+    <div className="container mx-auto p-6 max-w-7xl">
+      {/* Header Section */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">📱 Subscriptions</h1>
+        <p className="text-gray-600">Manage your subscription services and track your recurring expenses</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+          <div className="text-center">
+            <div className="text-2xl font-bold">{subscriptions.length}</div>
+            <div className="text-blue-100">Total Subscriptions</div>
+          </div>
+        </Card>
+        <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+          <div className="text-center">
+            <div className="text-2xl font-bold">
+              ₹{subscriptions.reduce((sum, sub) => sum + parseFloat(sub.cost || 0), 0).toFixed(2)}
+            </div>
+            <div className="text-green-100">Monthly Cost</div>
+          </div>
+        </Card>
+        <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+          <div className="text-center">
+            <div className="text-2xl font-bold">
+              ₹{subscriptions.reduce((sum, sub) => sum + parseFloat(sub.annualized_cost || 0), 0).toFixed(2)}
+            </div>
+            <div className="text-purple-100">Annual Cost</div>
+          </div>
+        </Card>
+        <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+          <div className="text-center">
+            <div className="text-2xl font-bold">
+              {subscriptions.filter(sub => sub.auto_renews).length}
+            </div>
+            <div className="text-orange-100">Auto-Renewing</div>
+          </div>
+        </Card>
+      </div>
+
       <Card>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
           <button
             onClick={handleAddSubscription}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2"
           >
-            Add Subscription
+            <span className="text-xl">➕</span>
+            <span>Add Subscription</span>
           </button>
-          <div className="flex space-x-2">
-            <Input
-              id="search"
-              type="text"
-              placeholder="Search by service name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="flex flex-wrap gap-3">
+            <div className="relative">
+              <Input
+                id="search"
+                type="text"
+                placeholder="🔍 Search subscriptions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
+              />
+              <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
+            </div>
+            
             <Select
               id="filterCategory"
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
               options={[
-                { value: "", label: "All Categories" },
+                { value: "", label: "🏷️ All Categories" },
                 ...categories.map((cat) => ({
                   value: cat.id,
-                  label: cat.name,
+                  label: `🏷️ ${cat.name}`,
                 })),
               ]}
+              className="min-w-[150px] border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
             />
+            
             <Select
               id="filterBillingCycle"
               value={filterBillingCycle}
               onChange={(e) => setFilterBillingCycle(e.target.value)}
               options={[
-                { value: "", label: "All Cycles" },
-                ...billingCycleOptions,
+                { value: "", label: "🔄 All Cycles" },
+                ...billingCycleOptions.map(option => ({
+                  ...option,
+                  label: `🔄 ${option.label}`
+                })),
               ]}
+              className="min-w-[150px] border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
             />
+            
             <Select
               id="sortBy"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               options={[
-                { value: "start_date", label: "Sort by Start Date" },
-                { value: "cost", label: "Sort by Cost" },
-                { value: "annualized_cost", label: "Sort by Annualized Cost" },
+                { value: "start_date", label: "📅 Sort by Start Date" },
+                { value: "cost", label: "💰 Sort by Cost" },
+                { value: "annualized_cost", label: "📊 Sort by Annualized Cost" },
               ]}
+              className="min-w-[180px] border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
+            />
+            
+            <Select
+              id="pageSize"
+              value={limit}
+              onChange={(e) => {
+                setLimit(parseInt(e.target.value));
+                setPage(1);
+              }}
+              options={[
+                { value: 5, label: "5 per page" },
+                { value: 10, label: "10 per page" },
+                { value: 20, label: "20 per page" },
+                { value: 50, label: "50 per page" },
+              ]}
+              className="min-w-[120px] border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
             />
           </div>
         </div>
-        {error && <p className="text-red-500 text-center mb-4">{error}</p>}
-        {success && (
-          <p className="text-green-500 text-center mb-4">{success}</p>
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-center">
+              <span className="text-red-500 mr-2">❌</span>
+              <p className="text-red-700 font-medium">{error}</p>
+            </div>
+          </div>
         )}
+        {success && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-center">
+              <span className="text-green-500 mr-2">✅</span>
+              <p className="text-green-700 font-medium">{success}</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Pagination Info */}
+        {!isLoading && subscriptions.length > 0 && (
+          <div className="bg-gray-50 rounded-lg p-4 mb-6 text-center">
+            <div className="text-sm text-gray-600">
+              📊 Showing <span className="font-semibold text-blue-600">{((page - 1) * limit) + 1}</span> to <span className="font-semibold text-blue-600">{Math.min(page * limit, subscriptions.length)}</span> of <span className="font-semibold text-blue-600">{subscriptions.length}</span> subscriptions
+            </div>
+          </div>
+        )}
+        
         {isLoading ? (
-          <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <p className="mt-2 text-gray-600">Loading subscriptions...</p>
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <p className="mt-4 text-gray-600 text-lg">Loading your subscriptions...</p>
+          </div>
+        ) : subscriptions.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">📱</div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">No subscriptions found</h3>
+            <p className="text-gray-500 mb-4">Start by adding your first subscription service</p>
+            <button
+              onClick={handleAddSubscription}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors"
+            >
+              Add Your First Subscription
+            </button>
           </div>
         ) : (
-          <Table columns={columns} data={subscriptions} />
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <Table columns={columns} data={getCurrentPageSubscriptions()} />
+          </div>
         )}
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          onPageChange={setPage}
-        />
+        {/* Pagination */}
+        {!isLoading && subscriptions.length > 0 && totalPages > 1 && (
+          <div className="mt-6">
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+            />
+          </div>
+        )}
       </Card>
 
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={currentSubscription ? "Edit Subscription" : "Add Subscription"}
-      >
-        <form onSubmit={handleSubmit}>
-          <Input
-            label="Service Name"
-            id="service_name"
-            type="text"
-            value={formData.service_name}
-            onChange={handleInputChange}
-            required
-          />
-          <Input
-            label="Cost"
-            id="cost"
-            type="number"
-            value={formData.cost}
-            onChange={handleInputChange}
-            required
-          />
-          <Select
-            label="Billing Cycle"
-            id="billing_cycle"
-            value={formData.billing_cycle}
-            onChange={handleInputChange}
-            options={billingCycleOptions}
-            required
-          />
-          <Select
-            label="Category"
-            id="category"
-            value={formData.category}
-            onChange={handleInputChange}
-            options={categories.map((cat) => ({
-              value: cat.id,
-              label: cat.name,
-            }))}
-            required
-          />
-          <Input
-            label="Auto Renews"
-            id="auto_renews"
-            type="checkbox"
-            checked={formData.auto_renews}
-            onChange={handleInputChange}
-          />
-          <Input
-            label="Start Date"
-            id="start_date"
-            type="date"
-            value={formData.start_date}
-            onChange={handleInputChange}
-            required
-          />
-          <p className="text-lg font-bold mt-4">
-            Annualized Cost: ${annualizedCost.toFixed(2)}
-          </p>
-          <div className="flex justify-end space-x-2 mt-4">
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-            >
-              Save
-            </button>
+
+      
+      {/* Simple Inline Modal for Testing */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex justify-center items-center">
+          <div className="relative p-5 border w-full max-w-md md:max-w-lg lg:max-w-xl shadow-lg rounded-md bg-white">
+            <div className="flex justify-between items-center pb-3">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {currentSubscription ? "Edit Subscription" : "Add Subscription"}
+              </h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300 rounded-md"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">
+                  Service Name
+                </label>
+                <input
+                  type="text"
+                  id="service_name"
+                  value={formData.service_name}
+                  onChange={handleInputChange}
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                  required
+                />
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">
+                  Cost
+                </label>
+                <input
+                  type="number"
+                  id="cost"
+                  value={formData.cost}
+                  onChange={handleInputChange}
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                  required
+                />
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">
+                  Billing Cycle
+                </label>
+                <select
+                  id="billing_cycle"
+                  value={formData.billing_cycle}
+                  onChange={handleInputChange}
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                  required
+                >
+                  {billingCycleOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">
+                  Category
+                </label>
+                <select
+                  id="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                  required
+                >
+                  <option value="">Select a category</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="mb-4">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="auto_renews"
+                    checked={formData.auto_renews}
+                    onChange={handleInputChange}
+                    className="mr-2"
+                  />
+                  <span className="text-sm font-bold text-gray-700">Auto Renews</span>
+                </label>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  id="start_date"
+                  value={formData.start_date}
+                  onChange={handleInputChange}
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                  required
+                />
+              </div>
+              
+              <p className="text-lg font-bold mt-4 mb-4">
+                Annualized Cost: ₹{annualizedCost.toFixed(2)}
+              </p>
+              
+              <div className="flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
-      </Modal>
+        </div>
+      )}
     </div>
   );
 };

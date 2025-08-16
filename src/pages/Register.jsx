@@ -13,8 +13,33 @@ const Register = () => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    
+    // Frontend validation
+    if (!username.trim()) {
+      setError('Username is required');
+      return;
+    }
+    
+    if (username.trim().length < 3) {
+      setError('Username must be at least 3 characters');
+      return;
+    }
+    
+    if (!password) {
+      setError('Password is required');
+      return;
+    }
+    
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+    
     try {
-      await api.post('/auth/register', { username, password });
+      await api.post('/auth/register', { 
+        username: username.trim(), 
+        password 
+      });
       setSuccess('Registration successful! You can now log in.');
       setTimeout(() => {
         navigate('/login');

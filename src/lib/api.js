@@ -57,7 +57,8 @@ export const metricsAPI = {
 };
 
 export const renewalsAPI = {
-  getUpcomingRenewals: () => api.get("/renewals"),
+  getUpcomingRenewals: (withinDays = 30) =>
+    api.get(`/renewals?withinDays=${withinDays}`),
 };
 
 export default api;
