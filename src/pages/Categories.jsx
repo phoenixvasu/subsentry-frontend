@@ -139,7 +139,7 @@ const Categories = () => {
     return (
       <div className="text-center mt-8">
         <LoadingSpinner size="lg" text="Loading spending analysis..." />
-      </div>
+        </div>
     );
   }
 
@@ -336,12 +336,12 @@ const Categories = () => {
                     ₹{stat.totalAnnualizedCost.toFixed(2)}
                   </td>
                   <td className="py-4 px-6">
-                    <button
+            <button
                       onClick={() => setSelectedCategory(selectedCategory === stat.id ? null : stat.id)}
                       className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-xs transition-colors"
-                    >
+            >
                       {selectedCategory === stat.id ? 'Hide Details' : 'Show Details'}
-                    </button>
+            </button>
                   </td>
                 </tr>
               ))}
@@ -403,7 +403,7 @@ const Categories = () => {
             </Card>
           )
         ))}
-      </div>
+          </div>
     </div>
   );
 };
