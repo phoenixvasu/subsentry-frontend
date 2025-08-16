@@ -22,9 +22,11 @@ const Categories = () => {
   const fetchCategories = async () => {
     try {
       const response = await api.get("/categories");
-      setCategories(response.data);
+      // Fix: Access the data property from the response
+      setCategories(response.data.data || []);
     } catch (err) {
       setError("Failed to fetch categories.");
+      setCategories([]); // Ensure categories is always an array
     }
   };
 
@@ -62,7 +64,7 @@ const Categories = () => {
     setSuccess("");
     try {
       if (currentCategory) {
-        await api.put(`/categories/${currentCategory._id}`, {
+        await api.put(`/categories/${currentCategory.id}`, {
           name: categoryName,
         });
         setSuccess("Category updated successfully!");
@@ -90,7 +92,7 @@ const Categories = () => {
             Edit
           </button>
           <button
-            onClick={() => handleDeleteCategory(row._id)}
+            onClick={() => handleDeleteCategory(row.id)}
             className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-xs"
           >
             Delete

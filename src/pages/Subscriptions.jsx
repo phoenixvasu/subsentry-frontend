@@ -13,12 +13,13 @@ const Subscriptions = () => {
   useAuthGuard();
   const [subscriptions, setSubscriptions] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const [formData, setFormData] = useState({
     service_name: "",
     cost: "",
-    billing_cycle: "monthly",
+    billing_cycle: "Monthly",
     category: "",
     auto_renews: true,
     start_date: "",
@@ -38,42 +39,40 @@ const Subscriptions = () => {
   const [totalPages, setTotalPages] = useState(1);
 
   const billingCycleOptions = [
-    { value: "monthly", label: "Monthly" },
-    { value: "quarterly", label: "Quarterly" },
-    { value: "yearly", label: "Yearly" },
+    { value: "Monthly", label: "Monthly" },
+    { value: "Quarterly", label: "Quarterly" },
+    { value: "Yearly", label: "Yearly" },
   ];
 
   const fetchSubscriptions = useCallback(async () => {
     try {
-      const params = {
-        page,
-        limit,
-        ...(filterCategory && { category: filterCategory }),
-        ...(filterBillingCycle && { billing_cycle: filterBillingCycle }),
-        ...(debouncedSearchQuery && { search: debouncedSearchQuery }),
-        sortBy,
-      };
-      const response = await api.get("/subscriptions", { params });
-      setSubscriptions(response.data.subscriptions);
-      setTotalPages(response.data.totalPages);
+      setIsLoading(true);
+      console.log("Fetching subscriptions...");
+      // Backend doesn't support pagination/filtering yet, so we'll fetch all and handle it client-side
+      const response = await api.get("/subscriptions");
+      console.log("Subscriptions response:", response);
+      // Backend returns: { message: "...", data: [...] }
+      const subscriptionsData = response.data.data || [];
+      console.log("Subscriptions data:", subscriptionsData);
+      setSubscriptions(subscriptionsData);
+      setTotalPages(1); // No pagination support yet
     } catch (err) {
+      console.error("Error fetching subscriptions:", err);
       setError("Failed to fetch subscriptions.");
+      setSubscriptions([]);
+    } finally {
+      setIsLoading(false);
     }
-  }, [
-    page,
-    limit,
-    filterCategory,
-    filterBillingCycle,
-    debouncedSearchQuery,
-    sortBy,
-  ]);
+  }, []); // Remove dependencies since we're not using filters yet
 
   const fetchCategories = async () => {
     try {
       const response = await api.get("/categories");
-      setCategories(response.data);
+      // Fix: Access the data property from the response
+      setCategories(response.data.data || []);
     } catch (err) {
       setError("Failed to fetch categories.");
+      setCategories([]); // Ensure categories is always an array
     }
   };
 
@@ -93,13 +92,13 @@ const Subscriptions = () => {
     }
     let calculatedAnnualizedCost = 0;
     switch (formData.billing_cycle) {
-      case "monthly":
+      case "Monthly":
         calculatedAnnualizedCost = cost * 12;
         break;
-      case "quarterly":
+      case "Quarterly":
         calculatedAnnualizedCost = cost * 4;
         break;
-      case "yearly":
+      case "Yearly":
         calculatedAnnualizedCost = cost;
         break;
       default:
@@ -121,8 +120,8 @@ const Subscriptions = () => {
     setFormData({
       service_name: "",
       cost: "",
-      billing_cycle: "monthly",
-      category: categories.length > 0 ? categories[0]._id : "",
+      billing_cycle: "Monthly",
+      category: categories.length > 0 ? categories[0].id : "",
       auto_renews: true,
       start_date: new Date().toISOString().split("T")[0],
     });
@@ -137,7 +136,7 @@ const Subscriptions = () => {
       service_name: subscription.service_name,
       cost: subscription.cost,
       billing_cycle: subscription.billing_cycle,
-      category: subscription.category._id,
+      category: subscription.category.id,
       auto_renews: subscription.auto_renews,
       start_date: new Date(subscription.start_date).toISOString().split("T")[0],
     });
@@ -167,7 +166,7 @@ const Subscriptions = () => {
     try {
       const payload = { ...formData, cost: parseFloat(formData.cost) };
       if (currentSubscription) {
-        await api.put(`/subscriptions/${currentSubscription._id}`, payload);
+        await api.put(`/subscriptions/${currentSubscription.id}`, payload);
         setSuccess("Subscription updated successfully!");
       } else {
         await api.post("/subscriptions", payload);
@@ -238,7 +237,7 @@ const Subscriptions = () => {
               options={[
                 { value: "", label: "All Categories" },
                 ...categories.map((cat) => ({
-                  value: cat._id,
+                  value: cat.id,
                   label: cat.name,
                 })),
               ]}
@@ -268,7 +267,14 @@ const Subscriptions = () => {
         {success && (
           <p className="text-green-500 text-center mb-4">{success}</p>
         )}
-        <Table columns={columns} data={subscriptions} />
+        {isLoading ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <p className="mt-2 text-gray-600">Loading subscriptions...</p>
+          </div>
+        ) : (
+          <Table columns={columns} data={subscriptions} />
+        )}
         <Pagination
           currentPage={page}
           totalPages={totalPages}
@@ -312,7 +318,7 @@ const Subscriptions = () => {
             value={formData.category}
             onChange={handleInputChange}
             options={categories.map((cat) => ({
-              value: cat._id,
+              value: cat.id,
               label: cat.name,
             }))}
             required
