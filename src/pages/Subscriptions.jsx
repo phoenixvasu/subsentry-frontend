@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import api from "../lib/api";
 import Card from "../components/Card";
 // import Modal from "../components/Modal";
@@ -55,8 +55,6 @@ const Subscriptions = () => {
       const subscriptionsData = response.data.data || [];
       console.log("Subscriptions data:", subscriptionsData);
       setSubscriptions(subscriptionsData);
-      // Calculate total pages based on limit
-      setTotalPages(Math.ceil(subscriptionsData.length / limit));
     } catch (err) {
       console.error("Error fetching subscriptions:", err);
       setError("Failed to fetch subscriptions.");
@@ -64,7 +62,7 @@ const Subscriptions = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [limit]); // Add limit as dependency
+  }, []);
 
   const fetchCategories = async () => {
     try {
@@ -77,11 +75,63 @@ const Subscriptions = () => {
     }
   };
 
-  // Get current page's subscriptions
+  // Apply filters, search, and sorting to subscriptions
+  const filteredAndSortedSubscriptions = useMemo(() => {
+    let filtered = [...subscriptions];
+
+    // Apply search filter
+    if (debouncedSearchQuery.trim()) {
+      const searchTerm = debouncedSearchQuery.toLowerCase();
+      filtered = filtered.filter(sub => 
+        sub.service_name.toLowerCase().includes(searchTerm) ||
+        (sub.category_name && sub.category_name.toLowerCase().includes(searchTerm))
+      );
+    }
+
+    // Apply category filter
+    if (filterCategory) {
+      filtered = filtered.filter(sub => {
+        const subCategory = typeof sub.category === 'string' ? parseInt(sub.category) : sub.category;
+        const filterCat = parseInt(filterCategory);
+        return subCategory === filterCat;
+      });
+    }
+
+    // Apply billing cycle filter
+    if (filterBillingCycle) {
+      filtered = filtered.filter(sub => sub.billing_cycle === filterBillingCycle);
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "cost":
+          return parseFloat(b.cost) - parseFloat(a.cost);
+        case "annualized_cost":
+          return parseFloat(b.annualized_cost) - parseFloat(a.annualized_cost);
+        case "start_date":
+        default:
+          return new Date(b.start_date) - new Date(a.start_date);
+      }
+    });
+
+    return filtered;
+  }, [subscriptions, debouncedSearchQuery, filterCategory, filterBillingCycle, sortBy]);
+
+  // Calculate total pages based on filtered data
+  useEffect(() => {
+    setTotalPages(Math.ceil(filteredAndSortedSubscriptions.length / limit));
+    // Reset to page 1 if current page is beyond total pages
+    if (page > Math.ceil(filteredAndSortedSubscriptions.length / limit)) {
+      setPage(1);
+    }
+  }, [filteredAndSortedSubscriptions.length, limit, page]);
+
+  // Get current page's subscriptions from filtered data
   const getCurrentPageSubscriptions = () => {
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
-    return subscriptions.slice(startIndex, endIndex);
+    return filteredAndSortedSubscriptions.slice(startIndex, endIndex);
   };
 
   // Handle page change
@@ -156,7 +206,7 @@ const Subscriptions = () => {
       service_name: subscription.service_name,
       cost: subscription.cost,
       billing_cycle: subscription.billing_cycle,
-      category: subscription.category.id,
+      category: subscription.category_id || subscription.category,
       auto_renews: subscription.auto_renews,
       start_date: new Date(subscription.start_date).toISOString().split("T")[0],
     });
@@ -319,14 +369,14 @@ const Subscriptions = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
           <div className="text-center">
-            <div className="text-2xl font-bold">{subscriptions.length}</div>
+            <div className="text-2xl font-bold">{filteredAndSortedSubscriptions.length}</div>
             <div className="text-blue-100">Total Subscriptions</div>
           </div>
         </Card>
         <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
           <div className="text-center">
             <div className="text-2xl font-bold">
-              ₹{subscriptions.reduce((sum, sub) => sum + parseFloat(sub.cost || 0), 0).toFixed(2)}
+              ₹{filteredAndSortedSubscriptions.reduce((sum, sub) => sum + parseFloat(sub.cost || 0), 0).toFixed(2)}
             </div>
             <div className="text-green-100">Monthly Cost</div>
           </div>
@@ -334,7 +384,7 @@ const Subscriptions = () => {
         <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
           <div className="text-center">
             <div className="text-2xl font-bold">
-              ₹{subscriptions.reduce((sum, sub) => sum + parseFloat(sub.annualized_cost || 0), 0).toFixed(2)}
+              ₹{filteredAndSortedSubscriptions.reduce((sum, sub) => sum + parseFloat(sub.annualized_cost || 0), 0).toFixed(2)}
             </div>
             <div className="text-purple-100">Annual Cost</div>
           </div>
@@ -342,7 +392,7 @@ const Subscriptions = () => {
         <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
           <div className="text-center">
             <div className="text-2xl font-bold">
-              {subscriptions.filter(sub => sub.auto_renews).length}
+              {filteredAndSortedSubscriptions.filter(sub => sub.auto_renews).length}
             </div>
             <div className="text-orange-100">Auto-Renewing</div>
           </div>
@@ -366,9 +416,8 @@ const Subscriptions = () => {
                 placeholder="🔍 Search subscriptions..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
+                className="w-64 border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
               />
-              <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
             </div>
             
             <Select
@@ -446,10 +495,10 @@ const Subscriptions = () => {
         )}
         
         {/* Pagination Info */}
-        {!isLoading && subscriptions.length > 0 && (
+        {!isLoading && filteredAndSortedSubscriptions.length > 0 && (
           <div className="bg-gray-50 rounded-lg p-4 mb-6 text-center">
             <div className="text-sm text-gray-600">
-              📊 Showing <span className="font-semibold text-blue-600">{((page - 1) * limit) + 1}</span> to <span className="font-semibold text-blue-600">{Math.min(page * limit, subscriptions.length)}</span> of <span className="font-semibold text-blue-600">{subscriptions.length}</span> subscriptions
+              📊 Showing <span className="font-semibold text-blue-600">{((page - 1) * limit) + 1}</span> to <span className="font-semibold text-blue-600">{Math.min(page * limit, filteredAndSortedSubscriptions.length)}</span> of <span className="font-semibold text-blue-600">{filteredAndSortedSubscriptions.length}</span> subscriptions
             </div>
           </div>
         )}
@@ -459,17 +508,26 @@ const Subscriptions = () => {
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
             <p className="mt-4 text-gray-600 text-lg">Loading your subscriptions...</p>
           </div>
-        ) : subscriptions.length === 0 ? (
+        ) : filteredAndSortedSubscriptions.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-6xl mb-4">📱</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No subscriptions found</h3>
-            <p className="text-gray-500 mb-4">Start by adding your first subscription service</p>
-            <button
-              onClick={handleAddSubscription}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors"
-            >
-              Add Your First Subscription
-            </button>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              {subscriptions.length === 0 ? "No subscriptions found" : "No subscriptions match your filters"}
+            </h3>
+            <p className="text-gray-500 mb-4">
+              {subscriptions.length === 0 
+                ? "Start by adding your first subscription service"
+                : "Try adjusting your search or filter criteria"
+              }
+            </p>
+            {subscriptions.length === 0 && (
+              <button
+                onClick={handleAddSubscription}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors"
+              >
+                Add Your First Subscription
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-gray-200">
@@ -477,7 +535,7 @@ const Subscriptions = () => {
           </div>
         )}
         {/* Pagination */}
-        {!isLoading && subscriptions.length > 0 && totalPages > 1 && (
+        {!isLoading && filteredAndSortedSubscriptions.length > 0 && totalPages > 1 && (
           <div className="mt-6">
             <Pagination
               currentPage={page}

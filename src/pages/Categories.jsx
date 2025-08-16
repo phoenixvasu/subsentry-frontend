@@ -45,7 +45,11 @@ const Categories = () => {
     const stats = {};
     
     categories.forEach(category => {
-      const categorySubs = subscriptions.filter(sub => sub.category === category.id);
+      const categorySubs = subscriptions.filter(sub => {
+        const subCategory = typeof sub.category === 'string' ? parseInt(sub.category) : sub.category;
+        const catId = typeof category.id === 'string' ? parseInt(category.id) : category.id;
+        return subCategory === catId;
+      });
       const totalCost = categorySubs.reduce((sum, sub) => sum + parseFloat(sub.cost), 0);
       const totalAnnualized = categorySubs.reduce((sum, sub) => sum + parseFloat(sub.annualized_cost), 0);
       
@@ -71,7 +75,11 @@ const Categories = () => {
 
   // Get subscriptions for a specific category
   const getCategorySubscriptions = (categoryId) => {
-    return subscriptions.filter(sub => sub.category === categoryId);
+    return subscriptions.filter(sub => {
+      const subCategory = typeof sub.category === 'string' ? parseInt(sub.category) : sub.category;
+      const catId = typeof categoryId === 'string' ? parseInt(categoryId) : categoryId;
+      return subCategory === catId;
+    });
   };
 
   // Prepare data for pie chart
@@ -317,93 +325,103 @@ const Categories = () => {
             </thead>
             <tbody>
               {categoryStats.map((stat) => (
-                <tr key={stat.id} className="bg-white border-b hover:bg-gray-50">
-                  <td className="py-4 px-6">
-                    <div className="font-semibold text-gray-900">{stat.name}</div>
-                    <div className="text-sm text-gray-500">
-                      {stat.subscriptionCount} subscription{stat.subscriptionCount !== 1 ? 's' : ''}
-                    </div>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                      {stat.subscriptionCount}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 font-semibold">
-                    ₹{stat.totalMonthlyCost.toFixed(2)}
-                  </td>
-                  <td className="py-4 px-6 font-semibold">
-                    ₹{stat.totalAnnualizedCost.toFixed(2)}
-                  </td>
-                  <td className="py-4 px-6">
-            <button
-                      onClick={() => setSelectedCategory(selectedCategory === stat.id ? null : stat.id)}
-                      className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-xs transition-colors"
-            >
-                      {selectedCategory === stat.id ? 'Hide Details' : 'Show Details'}
-            </button>
-                  </td>
-                </tr>
+                <React.Fragment key={stat.id}>
+                  <tr className={`bg-white border-b hover:bg-gray-50 transition-colors duration-200 ${
+                    selectedCategory === stat.id ? 'bg-blue-25 border-l-4 border-l-blue-500' : ''
+                  }`}>
+                    <td className="py-4 px-6">
+                      <div className="font-semibold text-gray-900">{stat.name}</div>
+                      <div className="text-sm text-gray-500">
+                        {stat.subscriptionCount} subscription{stat.subscriptionCount !== 1 ? 's' : ''}
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                        {stat.subscriptionCount}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 font-semibold">
+                      ₹{stat.totalMonthlyCost.toFixed(2)}
+                    </td>
+                    <td className="py-4 px-6 font-semibold">
+                      ₹{stat.totalAnnualizedCost.toFixed(2)}
+                    </td>
+                    <td className="py-4 px-6">
+                      <button
+                        onClick={() => setSelectedCategory(selectedCategory === stat.id ? null : stat.id)}
+                        className={`font-bold py-2 px-4 rounded text-xs transition-all duration-200 ${
+                          selectedCategory === stat.id 
+                            ? 'bg-red-500 hover:bg-red-600 text-white' 
+                            : 'bg-blue-500 hover:bg-blue-600 text-white'
+                        }`}
+                      >
+                        {selectedCategory === stat.id ? '🔽 Hide Details' : '▶️ Show Details'}
+                      </button>
+                    </td>
+                  </tr>
+                  
+                  {/* Expandable Details Row */}
+                  {selectedCategory === stat.id && (
+                    <tr className="bg-blue-50 border-b animate-in slide-in-from-top-2 duration-300">
+                      <td colSpan="5" className="py-4 px-6">
+                        <div className="bg-white rounded-lg border border-blue-200 p-4 shadow-sm transform transition-all duration-300">
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-lg font-semibold text-blue-800">{stat.name} - Subscription Details</h4>
+                            <div className="text-sm text-blue-600">
+                              Monthly: ₹{stat.totalMonthlyCost.toFixed(2)} • Annual: ₹{stat.totalAnnualizedCost.toFixed(2)}
+                            </div>
+                          </div>
+                          
+                          {stat.subscriptions.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm text-left text-gray-500">
+                                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                  <tr>
+                                    <th className="py-2 px-4">Service</th>
+                                    <th className="py-2 px-4">Cost</th>
+                                    <th className="py-2 px-4">Billing Cycle</th>
+                                    <th className="py-2 px-4">Annual Cost</th>
+                                    <th className="py-2 px-4">Start Date</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {stat.subscriptions.map((sub) => (
+                                    <tr key={sub.id} className="bg-white border-b hover:bg-gray-50">
+                                      <td className="py-2 px-4 font-medium">{sub.service_name}</td>
+                                      <td className="py-2 px-4">₹{parseFloat(sub.cost).toFixed(2)}</td>
+                                      <td className="py-2 px-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                          sub.billing_cycle === 'Monthly' ? 'bg-blue-100 text-blue-800' :
+                                          sub.billing_cycle === 'Yearly' ? 'bg-green-100 text-green-800' :
+                                          'bg-yellow-100 text-yellow-800'
+                                        }`}>
+                                          {sub.billing_cycle}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 px-4 font-semibold">₹{parseFloat(sub.annualized_cost).toFixed(2)}</td>
+                                      <td className="py-2 px-4">{new Date(sub.start_date).toLocaleDateString()}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-gray-500 text-center py-4">No subscriptions in this category</p>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
         </div>
       </Card>
 
-      {/* Category Details - Expandable Sections */}
-      <div className="space-y-4">
-        {categoryStats.map((stat) => (
-          selectedCategory === stat.id && (
-            <Card key={stat.id}>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">{stat.name}</h3>
-                <div className="text-sm text-gray-500">
-                  {stat.subscriptionCount} subscription{stat.subscriptionCount !== 1 ? 's' : ''} • 
-                  Monthly: ₹{stat.totalMonthlyCost.toFixed(2)} • 
-                  Annual: ₹{stat.totalAnnualizedCost.toFixed(2)}
-                </div>
-              </div>
-              
-              {stat.subscriptions.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left text-gray-500">
-                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                      <tr>
-                        <th className="py-2 px-4">Service</th>
-                        <th className="py-2 px-4">Cost</th>
-                        <th className="py-2 px-4">Billing Cycle</th>
-                        <th className="py-2 px-4">Annual Cost</th>
-                        <th className="py-2 px-4">Start Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stat.subscriptions.map((sub) => (
-                        <tr key={sub.id} className="bg-white border-b hover:bg-gray-50">
-                          <td className="py-2 px-4 font-medium">{sub.service_name}</td>
-                          <td className="py-2 px-4">₹{parseFloat(sub.cost).toFixed(2)}</td>
-                          <td className="py-2 px-4">
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              sub.billing_cycle === 'Monthly' ? 'bg-blue-100 text-blue-800' :
-                              sub.billing_cycle === 'Yearly' ? 'bg-green-100 text-green-800' :
-                              'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {sub.billing_cycle}
-                            </span>
-                          </td>
-                          <td className="py-2 px-4 font-semibold">₹{parseFloat(sub.annualized_cost).toFixed(2)}</td>
-                          <td className="py-2 px-4">{new Date(sub.start_date).toLocaleDateString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-gray-500 text-center py-4">No subscriptions in this category</p>
-              )}
-            </Card>
-          )
-        ))}
-          </div>
+
+
+      
     </div>
   );
 };
